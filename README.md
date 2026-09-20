@@ -1,690 +1,142 @@
-# 🚨 SENTINEL --- Edge AI Illegal Dumping Detection System
+# 🚨 SENTINEL — Edge AI Illegal Dumping Detection System
 
-> **Real-time Edge AI surveillance for evidence-based illegal dumping
-> detection**
+> **An edge-AI surveillance system that detects illegal dumping in real time using a fine-tuned YOLOv8 model, a HOLDING → RELEASED → DEPARTED evidence-based state machine, Telegram alerts, and a live Flask dashboard.**
+>
+> Supports multiple simultaneous camera sources (laptop webcam + phone via IP Webcam).
 
-SENTINEL is an **Edge AI--powered illegal dumping detection system**
-designed to monitor camera feeds in real time, identify garbage and
-people using a fine-tuned **YOLOv8** model, and confirm potential
-dumping events using an evidence-based state machine rather than relying
-on a single-frame prediction.
+**Project by:** AMC Engineering College, Bengaluru · VTU Batch 2023–27 · Edge AI Major Project
 
-The system combines **computer vision, OpenVINO acceleration,
-multi-camera processing, event-state tracking, Telegram notifications,
-and a live Flask dashboard** into one deployable monitoring pipeline.
+---
 
-**Academic Major Project · AMC Engineering College, Bengaluru · VTU
-Batch 2023--27**
+## ✨ Features
 
-------------------------------------------------------------------------
+- **Custom-trained YOLOv8s model** (`garbage` + `person` classes), fine-tuned on a Roboflow illegal-dumping dataset
+- **Evidence-based dumping detection** — tracks `HOLDING → RELEASED → DEPARTED` sequences instead of single-frame guesses, scored across multiple weighted signals (held, released, departed, stationary, background)
+- **Multi-camera support** — run any number of cameras (laptop webcam, phone via IP Webcam app) simultaneously, each independently tracked
+- **OpenVINO-accelerated inference** for real-time performance on CPU-only laptops
+- **Telegram alerts** with photo evidence on confirmed detections
+- **Live web dashboard (Flask)** — real system stats, live camera feeds, detection timeline, alert log with pagination, settings panel to clear old data
 
-## ✨ Key Features
+---
 
-  -----------------------------------------------------------------------
-  Capability                          Description
-  ----------------------------------- -----------------------------------
-  🧠 **Custom YOLOv8 Detection**      Fine-tuned model detecting
-                                      `garbage` and `person` classes
+## 🏗️ Architecture
 
-  🔎 **Evidence-Based Detection**     Uses a
-                                      `HOLDING → RELEASED → DEPARTED`
-                                      state machine to reduce false
-                                      detections
+```text
+detect.py / detect_cam2.py   →  writes static/live_frame_<CAM>.jpg,
+   (one process per camera)     static/live_status_<CAM>.json, log.csv
 
-  📊 **Multi-Signal Scoring**         Combines held, released, departed,
-                                      stationary and background evidence
-
-  📹 **Multi-Camera Support**         Supports laptop webcams and
-                                      network/phone cameras
-                                      simultaneously
-
-  ⚡ **OpenVINO Acceleration**        Optimized CPU inference for edge
-                                      devices and CPU-only laptops
-
-  🚨 **Telegram Alerts**              Sends confirmed-event notifications
-                                      with image evidence
-
-  🖥️ **Live Dashboard**               Flask dashboard with camera feeds,
-                                      system status, timeline and alerts
-
-  📝 **Event Logging**                Stores detection and alert
-                                      information for later analysis
-
-  🔄 **Independent Camera Processes** Each camera runs independently,
-                                      avoiding camera-device conflicts
-  -----------------------------------------------------------------------
-
-------------------------------------------------------------------------
-
-## 🎯 Problem Statement
-
-Illegal waste dumping is difficult to monitor continuously using
-conventional surveillance because human operators cannot watch multiple
-camera feeds at all times.
-
-SENTINEL addresses this by using **Edge AI computer vision** to
-automatically analyze camera streams and identify potential dumping
-behavior.
-
-Instead of treating every frame containing a person and garbage as an
-illegal-dumping event, SENTINEL evaluates the **sequence of events over
-time**:
-
-``` text
-        PERSON + GARBAGE
-              │
-              ▼
-        ┌─────────────┐
-        │   HOLDING   │
-        │ Person holds│
-        │    garbage  │
-        └──────┬──────┘
-               │
-               ▼
-        ┌─────────────┐
-        │  RELEASED   │
-        │ Garbage is  │
-        │    placed   │
-        └──────┬──────┘
-               │
-               ▼
-        ┌─────────────┐
-        │  DEPARTED   │
-        │ Person moves│
-        │     away    │
-        └──────┬──────┘
-               │
-               ▼
-      🚨 CONFIRMED EVENT
+app.py (Flask)                →  reads those files, serves the dashboard
+   + templates/index.html        and JSON APIs (/api/status, /api/alerts, ...)
 ```
 
-This evidence-based approach is intended to distinguish a potential
-dumping action from ordinary situations such as a person simply standing
-near garbage.
+Each camera is a fully independent process — the dashboard reads their output files rather than sharing the camera device directly, which avoids device-lock conflicts and lets you scale to more cameras just by running more copies of `detect.py` with different environment variables.
 
-------------------------------------------------------------------------
+---
 
-## 🏗️ System Architecture
+## ⚙️ Setup
 
-``` text
-                 ┌───────────────────────┐
-                 │      CAMERA SOURCES   │
-                 │                       │
-                 │  CAM-01 Laptop Webcam │
-                 │  CAM-02 Phone Camera  │
-                 │  CAM-03 ...           │
-                 └───────────┬───────────┘
-                             │
-                             ▼
-                 ┌───────────────────────┐
-                 │    YOLOv8 Detection   │
-                 │                       │
-                 │  • garbage            │
-                 │  • person             │
-                 └───────────┬───────────┘
-                             │
-                             ▼
-                 ┌───────────────────────┐
-                 │ Evidence / Tracking   │
-                 │                       │
-                 │ HOLDING               │
-                 │ RELEASED              │
-                 │ DEPARTED              │
-                 └───────────┬───────────┘
-                             │
-                             ▼
-                 ┌───────────────────────┐
-                 │   Event Scoring       │
-                 │                       │
-                 │ held                  │
-                 │ released              │
-                 │ departed              │
-                 │ stationary            │
-                 │ background            │
-                 └───────────┬───────────┘
-                             │
-                 ┌───────────┴────────────┐
-                 ▼                        ▼
-       ┌──────────────────┐     ┌──────────────────┐
-       │ Telegram Alert   │     │ Flask Dashboard  │
-       │ + Photo Evidence │     │ Live Monitoring  │
-       └──────────────────┘     └──────────────────┘
-```
+### 1. Clone and install dependencies
 
-### Process Architecture
-
-Each camera is handled by an independent detection process:
-
-``` text
-detect.py / detect_cam2.py
-        │
-        ├── YOLOv8 inference
-        ├── tracking / evidence logic
-        ├── live frame output
-        ├── status JSON
-        └── event logging
-                 │
-                 ▼
-             Flask app
-                 │
-                 ├── Dashboard
-                 ├── Camera feeds
-                 ├── Detection timeline
-                 ├── Alert log
-                 └── JSON APIs
-```
-
-This architecture allows additional cameras to be added without making
-the Flask dashboard directly control camera devices.
-
-------------------------------------------------------------------------
-
-## 🧠 Detection Logic
-
-SENTINEL uses temporal evidence instead of a simple:
-
-> `person + garbage = dumping`
-
-rule.
-
-The system evaluates a sequence of observations:
-
-### 1. HOLDING
-
-A person is associated with garbage and the system gathers evidence that
-the garbage is being carried or held.
-
-### 2. RELEASED
-
-The garbage becomes stationary or is otherwise separated from the
-person's movement, providing evidence that it has been placed down.
-
-### 3. DEPARTED
-
-The person moves away from the released garbage.
-
-### 4. Confirmation
-
-The collected signals are combined into a weighted event score. When the
-required evidence is satisfied, the system records a confirmed dumping
-event and can send an alert.
-
-``` text
-HOLDING
-   ↓
-RELEASED
-   ↓
-DEPARTED
-   ↓
-Evidence threshold satisfied
-   ↓
-🚨 Illegal dumping event
-```
-
-------------------------------------------------------------------------
-
-## 📁 Project Structure
-
-``` text
-edge-ai-illegal-dumping-detection-system/
-│
-├── dataset/                    # Training/evaluation data
-├── static/                     # Dashboard assets and live outputs
-├── templates/                  # Flask HTML templates
-│
-├── app.py                     # Flask dashboard
-├── detect.py                  # Primary camera detection pipeline
-├── detect_cam2.py             # Additional/network camera pipeline
-│
-├── dump_log.csv               # Dumping-event records
-├── log.csv                    # Detection logs
-├── log.json                   # JSON event/status data
-│
-├── requirements.txt            # Python dependencies
-├── .gitignore                  # Git exclusions
-├── README.md                   # Project documentation
-│
-└── runs/
-    └── detect/
-        └── train/
-            └── weights/
-                └── best.pt    # Fine-tuned model weights
-```
-
-> **Note:** Model binaries and datasets should generally be kept outside
-> Git history when they are large. If your repository already contains
-> large model files, keep only the files required for reproducible
-> deployment.
-
-------------------------------------------------------------------------
-
-## 🛠️ Tech Stack
-
-### Artificial Intelligence
-
--   **YOLOv8**
--   **OpenCV**
--   **OpenVINO**
--   Python
-
-### Backend & Dashboard
-
--   **Flask**
--   HTML
--   CSS
--   JavaScript
--   **Chart.js**
-
-### Notifications & System Utilities
-
--   **Telegram Bot API**
--   **psutil**
-
-### Development
-
--   Git
--   GitHub
--   VS Code
-
-------------------------------------------------------------------------
-
-## 🚀 Installation
-
-### 1. Clone the repository
-
-``` bash
-git clone https://github.com/sathvik-BR/edge-ai-illegal-dumping-detection-system.git
-cd edge-ai-illegal-dumping-detection-system
-```
-
-### 2. Install dependencies
-
-``` bash
+```bash
+git clone https://github.com/<your-username>/<repo-name>.git
+cd <repo-name>
 pip install -r requirements.txt
 ```
 
-For a virtual environment:
+### 2. Get the trained model weights
 
-``` bash
-python -m venv .venv
-```
+Model weights are not stored in this repo (kept out via `.gitignore` — binary files bloat git history).
 
-**Windows PowerShell:**
+Download `best.pt` from:
 
-``` powershell
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
+**https://drive.google.com/file/d/1nDwYC6pj08wDdcYP5WxFsSVfMpvBS7aq/view?usp=sharing**
 
-------------------------------------------------------------------------
+Place it at:
 
-## 🤖 Model Setup
-
-The system uses a custom-trained YOLOv8 model containing:
-
-``` text
-0 → garbage
-1 → person
-```
-
-If the trained weights are not included in the repository, download
-`best.pt` from the project's model storage and place it at:
-
-``` text
+```text
 runs/detect/train/weights/best.pt
 ```
 
-Alternatively, update the model path in the configuration used by
-`detect.py`.
+Update the `MODEL` path in `detect.py`'s `CFG` class if you place it elsewhere.
 
-### Training Dataset
+### 3. Get the training dataset (optional — only needed to retrain)
 
-The model was trained using the Roboflow **Illegal Dumping Detection**
-dataset.
+This project was trained on the Roboflow **"Illegal Dumping Detection"** dataset:
 
--   **v1:** 404 images
--   **v2:** 8,879 images --- used for the final model
+- **v1 (404 images):** https://universe.roboflow.com/bill-lhxqf/illegal-dumping-detection/dataset/2
+- **v2 (8,879 images, used for the final model):** https://universe.roboflow.com/bill-lhxqf/illegal-dumping-detection-2/dataset/1
 
-Dataset sources:
+Download via the Roboflow **"Show download code"** option (YOLOv8 format) — do not commit the dataset itself to this repo.
 
--   [Roboflow Illegal Dumping Detection ---
-    v1](https://universe.roboflow.com/bill-lhxqf/illegal-dumping-detection/dataset/2)
--   [Roboflow Illegal Dumping Detection ---
-    v2](https://universe.roboflow.com/bill-lhxqf/illegal-dumping-detection-2/dataset/1)
+### 4. Set up Telegram alerts (optional)
 
-> The dataset does not need to be committed to this repository unless
-> required for a specific academic submission.
+Create a bot via **[@BotFather](https://t.me/BotFather)**, then set:
 
-------------------------------------------------------------------------
+```bash
+# Windows PowerShell
+$env:SENTINEL_TG_TOKEN="your-bot-token"
+$env:SENTINEL_TG_CHAT_ID="your-chat-id"
 
-## 📱 Phone Camera Setup
-
-SENTINEL can use an Android phone as a network camera through the **IP
-Webcam** application.
-
-Start the IP Webcam server on the phone and note its IPv4 address.
-
-Example:
-
-``` text
-http://192.168.1.76:8080
+# macOS/Linux
+export SENTINEL_TG_TOKEN="your-bot-token"
+export SENTINEL_TG_CHAT_ID="your-chat-id"
 ```
 
-The video endpoint is:
+If unset, the system runs fine and just skips sending Telegram alerts.
 
-``` text
-http://192.168.1.76:8080/video
-```
+---
 
-Make sure the computer and phone can communicate over the same local
-network.
+## ▶️ Running it
 
-------------------------------------------------------------------------
+### Start the dashboard
 
-## ▶️ Running the System
-
-### Start the Flask dashboard
-
-Open a terminal:
-
-``` bash
+```bash
 python app.py
 ```
 
-Then open:
+Open `http://127.0.0.1:5000/` in your browser.
 
-``` text
-http://127.0.0.1:5000/
-```
+### Start detection — laptop webcam
 
-------------------------------------------------------------------------
+Start detection in a separate terminal:
 
-### Camera 1 --- Laptop Webcam
-
-Open a second terminal.
-
-**Windows PowerShell:**
-
-``` powershell
+```powershell
+# Windows PowerShell
 $env:SENTINEL_CAM_ID="CAM-01"
 $env:SENTINEL_CAM_SOURCE="0"
 python detect.py
 ```
 
-------------------------------------------------------------------------
+### Start detection — additional camera
 
-### Camera 2 --- Phone / IP Webcam
+For an additional camera (e.g. a phone via the IP Webcam Android app), in another terminal:
 
-Open another terminal:
-
-``` powershell
+```powershell
 $env:SENTINEL_CAM_ID="CAM-02"
 $env:SENTINEL_CAM_SOURCE="http://<phone-ip>:8080/video"
 python detect_cam2.py
 ```
 
-Example:
+---
 
-``` powershell
-$env:SENTINEL_CAM_ID="CAM-02"
-$env:SENTINEL_CAM_SOURCE="http://192.168.1.76:8080/video"
-python detect_cam2.py
-```
+## 🧰 Tech Stack
 
-------------------------------------------------------------------------
+`YOLOv8` · `OpenCV` · `OpenVINO` · `Flask` · `Telegram Bot API` · `Chart.js` · `psutil`
 
-## 🚨 Telegram Alerts
+---
 
-Telegram notifications are optional.
+## 📊 Results
 
-### 1. Create a Telegram bot
+Fine-tuned model validation performance (final version, 8,879-image dataset, ~68 epochs with early stopping):
 
-Use **BotFather** to create a bot and obtain the bot token.
+| Class | Precision | Recall | mAP50 | mAP50-95 |
+|:---|---:|---:|---:|---:|
+| garbage | 0.859 | 0.816 | 0.899 | 0.591 |
+| person | 0.782 | 0.831 | 0.813 | 0.434 |
+| **all** | **0.821** | **0.824** | **0.856** | **0.513** |
 
-### 2. Configure environment variables
-
-**Windows PowerShell:**
-
-``` powershell
-$env:SENTINEL_TG_TOKEN="your-bot-token"
-$env:SENTINEL_TG_CHAT_ID="your-chat-id"
-```
-
-**macOS/Linux:**
-
-``` bash
-export SENTINEL_TG_TOKEN="your-bot-token"
-export SENTINEL_TG_CHAT_ID="your-chat-id"
-```
-
-If these variables are not configured, the detection system can still
-run without Telegram alerts.
-
-> **Security:** Never commit bot tokens, API keys, passwords, or other
-> secrets to GitHub.
-
-------------------------------------------------------------------------
-
-## 📊 Model Performance
-
-Final validation results reported for the fine-tuned model trained on
-the 8,879-image dataset:
-
-  Class           Precision      Recall       mAP50    mAP50-95
-  ------------- ----------- ----------- ----------- -----------
-  garbage             0.859       0.816       0.899       0.591
-  person              0.782       0.831       0.813       0.434
-  **Overall**     **0.821**   **0.824**   **0.856**   **0.513**
-
-Training configuration reported for the final version:
-
-``` text
-Dataset:        8,879 images
-Training:       ~68 epochs
-Stopping:       Early stopping
-Model:          Fine-tuned YOLOv8
-Classes:        garbage, person
-```
-
-------------------------------------------------------------------------
-
-## 🖥️ Dashboard
-
-The Flask dashboard provides a centralized interface for monitoring the
-detection system.
-
-It is designed to expose:
-
--   📹 Live camera feeds
--   🟢 Camera/system status
--   🚨 Confirmed dumping events
--   📈 Detection statistics
--   🕒 Detection timeline
--   📋 Alert history
--   📄 Paginated logs
--   ⚙️ Data/settings controls
-
-The dashboard reads the outputs produced by the individual camera
-processes instead of directly taking ownership of the camera devices.
-
-------------------------------------------------------------------------
-
-## 🔧 Configuration
-
-Important environment variables include:
-
-  Variable                Purpose                    Example
-  ----------------------- -------------------------- ----------------
-  `SENTINEL_CAM_ID`       Unique camera identifier   `CAM-01`
-  `SENTINEL_CAM_SOURCE`   Camera/video source        `0`
-  `SENTINEL_TG_TOKEN`     Telegram bot token         `your-token`
-  `SENTINEL_TG_CHAT_ID`   Telegram destination       `your-chat-id`
-
-For multiple cameras, assign each camera a unique ID:
-
-``` text
-CAM-01
-CAM-02
-CAM-03
-...
-```
-
-------------------------------------------------------------------------
-
-## 🧪 Example Multi-Camera Deployment
-
-``` text
-Terminal 1
-└── python app.py
-
-Terminal 2
-└── CAM-01 → Laptop webcam
-
-Terminal 3
-└── CAM-02 → Phone IP camera
-
-Terminal 4
-└── CAM-03 → Additional network camera
-```
-
-All camera processes can feed their independent outputs into the same
-Flask dashboard.
-
-------------------------------------------------------------------------
-
-## 📈 Why Edge AI?
-
-SENTINEL is designed around edge inference so that camera frames can be
-processed locally rather than requiring every frame to be uploaded to a
-remote cloud service.
-
-### Benefits
-
--   ⚡ Lower inference latency
--   🔒 Local video processing
--   🌐 Reduced dependence on cloud connectivity
--   💻 Can operate on CPU-based systems
--   📹 Suitable for real-time surveillance scenarios
-
-OpenVINO is used to optimize inference for supported CPU hardware.
-
-------------------------------------------------------------------------
-
-## 🔐 Security & Privacy
-
-This project is intended for academic and demonstration purposes.
-
-When deploying the system:
-
--   Do not commit API keys or Telegram tokens.
--   Do not expose camera streams publicly without authentication.
--   Do not expose the Flask development server directly to the internet.
--   Protect stored detection images and logs.
--   Follow applicable privacy and surveillance regulations.
--   Obtain appropriate authorization before monitoring real locations.
-
-------------------------------------------------------------------------
-
-## 🧩 Troubleshooting
-
-### Camera does not open
-
-Check that the camera source is correct.
-
-For a webcam:
-
-``` powershell
-$env:SENTINEL_CAM_SOURCE="0"
-```
-
-For IP Webcam:
-
-``` powershell
-$env:SENTINEL_CAM_SOURCE="http://<phone-ip>:8080/video"
-```
-
-Test network connectivity from Windows:
-
-``` powershell
-Test-NetConnection <phone-ip> -Port 8080
-```
-
-The result should contain:
-
-``` text
-TcpTestSucceeded : True
-```
-
-### Model not found
-
-Confirm that the model exists at the configured path:
-
-``` text
-runs/detect/train/weights/best.pt
-```
-
-### Telegram alerts not working
-
-Verify:
-
-``` text
-SENTINEL_TG_TOKEN
-SENTINEL_TG_CHAT_ID
-```
-
-and ensure the values are valid.
-
-### Dashboard shows no live camera
-
-Make sure the corresponding detection process is running and producing
-its live frame/status files.
-
-------------------------------------------------------------------------
-
-## 🗺️ Future Enhancements
-
-Potential future improvements include:
-
--   Multi-object tracking with stronger identity persistence
--   Improved dumping-event temporal reasoning
--   Automatic camera health monitoring
--   Cloud/mobile dashboard deployment
--   Additional waste-category detection
--   GPS/location-aware incident reporting
--   Automatic incident reports
--   Edge deployment on Raspberry Pi / NVIDIA Jetson-class hardware
--   Model quantization and further inference optimization
--   Long-term analytics for hotspot detection
-
-------------------------------------------------------------------------
-
-## 👨‍💻 Project
-
-**SENTINEL --- Edge AI Illegal Dumping Detection System**
-
-**Institution:** AMC Engineering College, Bengaluru\
-**Program:** Computer Science & Engineering --- Artificial Intelligence
-& Machine Learning\
-**Batch:** VTU 2023--2027\
-**Project Type:** Major Project
-
-### Authors
-
-**B R Sathvik**
-
-------------------------------------------------------------------------
+---
 
 ## 📄 License
 
-This project is an **academic major project** developed for coursework,
-research, demonstration, and educational purposes.
-
-------------------------------------------------------------------------
-
-::: {align="center"}
-### 🚨 SENTINEL
-
-**Detect. Verify. Alert.**
-
-*Edge AI for smarter waste-management surveillance.*
-:::
+Academic project — for coursework/demonstration purposes.
