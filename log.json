@@ -1,0 +1,10 @@
+[
+  {
+    "timestamp": "2026-05-05 14:52:29",
+    "event": "Dumping Detected",
+    "image": "dump_1777972949.jpg",
+    "confidence": 1.0,
+    "person_id": "1",
+    "waste_items": "cell phone(holding)"
+  }
+]

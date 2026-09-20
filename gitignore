@@ -1,0 +1,29 @@
+# Model weights — too large/binary for git history, download separately (see README)
+runs/
+*.pt
+*.pt.zip
+*_openvino_model/
+
+# Roboflow dataset — thousands of images, don't commit; download via README link
+dataset/
+*.zip
+
+# Live/runtime generated files — regenerated automatically, not source
+static/live_frame*.jpg
+static/live_status*.json
+static/dump_*.jpg
+log.csv
+dump_log.csv
+log.json
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+env/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/

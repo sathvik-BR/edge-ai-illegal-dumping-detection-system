@@ -1,0 +1,7 @@
+ultralytics==8.4.46
+opencv-python==4.10.0.84
+numpy==1.26.4
+Flask==3.0.3
+psutil==5.9.8
+requests==2.31.0
+openvino==2025.0.0

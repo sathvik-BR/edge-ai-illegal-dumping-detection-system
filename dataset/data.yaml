@@ -1,0 +1,12 @@
+train: train/images
+val: valid/images
+test: test/images
+nc: 2
+names: ['garbage', 'person']
+
+roboflow:
+  workspace: bill-lhxqf
+  project: illegal-dumping-detection
+  version: 2
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/bill-lhxqf/illegal-dumping-detection/dataset/2
